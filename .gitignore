@@ -1,0 +1,31 @@
+# Docker volumes
+postgres_data/
+
+# Environment files
+.env
+.env.local
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (if you add client later)
+node_modules/
+npm-debug.log
