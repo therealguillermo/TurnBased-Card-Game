@@ -47,10 +47,12 @@ Stat generation uses prompts that adhere strictly to `stat_generation_rules.txt`
 
 ## Data and assets
 
-- **Catalog:** `data/card-templates.json` — optional; AI can generate any unit/item without a catalog entry.
-- **Drop types:** `data/drop-types.json` — controls which rarities, unit archetypes, and item slots can be generated per drop kind.
-- **Borders:** `assets/borders/{Rarity}Border.png`. Mounted into the container.
-- **Generated art:** Written to `assets/art/{templateId}.png`. For AI-generated templates not in the catalog, call `POST /generate/{templateId}` with body `{ "displayName": "...", "promptDescription": "..." }`.
+In the repo these live under `backend/` (mounted into the container at runtime).
+
+- **Catalog:** `backend/data/card-templates.json` — optional; AI can generate any unit/item without a catalog entry.
+- **Drop types:** `backend/data/drop-types.json` — controls which rarities, unit archetypes, and item slots can be generated per drop kind.
+- **Borders:** `backend/assets/borders/{Rarity}Border.png`. Mounted into the container.
+- **Generated art:** Written to `backend/assets/art/{templateId}.png`. For AI-generated templates not in the catalog, call `POST /generate/{templateId}` with body `{ "displayName": "...", "promptDescription": "..." }`.
 
 ## Example
 

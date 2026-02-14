@@ -34,8 +34,8 @@ services:
       NAKAMA_CONSOLE_KEY: "defaultkey"
       NAKAMA_CONSOLE_USERNAME: "admin"
       NAKAMA_CONSOLE_PASSWORD: "password"
-      # Runtime: load Go module from mounted volume (put built game.so in ./modules/)
-      NAKAMA_RUNTIME_PATH: "/local/modules"
+      # Runtime: load Go module from mounted volume (put built game.so in backend/modules/)
+      NAKAMA_RUNTIME_PATH: "/local/backend/modules"
       # Optional: for rpc_grant_item admin-only RPC (testing)
       # ADMIN_SECRET: "your-secret"
       # Logging
@@ -54,15 +54,15 @@ services:
       retries: 5
 
   generation-service:
-    build: ./generation-service
+    build: ./backend/generation-service
     container_name: card-generation-service
     environment:
       ASSETS_DIR: /app/assets
       CATALOG_PATH: /app/data/card-templates.json
       # Optional: set OPENAI_API_KEY to use AI generation instead of placeholders
     volumes:
-      - ./assets:/app/assets
-      - ./data:/app/data
+      - ./backend/assets:/app/assets
+      - ./backend/data:/app/data
     ports:
       - "8000:8000"
     restart: unless-stopped

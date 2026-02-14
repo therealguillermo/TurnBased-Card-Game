@@ -12,18 +12,18 @@ The module must be built as a **shared object** with the **same Go version** as 
 
 ```bash
 # From project root
-mkdir -p modules
-docker run --rm -v "$(pwd)/nakama-module:/module" -v "$(pwd)/modules:/out" heroiclabs/nakama-plugin-builder:go-1.21 build -o /out/game.so
+mkdir -p backend/modules
+docker run --rm -v "$(pwd)/backend/nakama-module:/module" -v "$(pwd)/backend/modules:/out" heroiclabs/nakama-plugin-builder:go-1.21 build -o /out/game.so
 ```
 
 If you don’t have the plugin-builder image, build on a Linux host with Go 1.20+ and CGO:
 
 ```bash
-cd nakama-module
+cd backend/nakama-module
 CGO_ENABLED=1 go build -buildmode=plugin -o ../modules/game.so .
 ```
 
-Ensure `modules/game.so` exists before starting Nakama.
+Ensure `backend/modules/game.so` exists before starting Nakama.
 
 ### 2. Start Nakama with Docker Compose
 
@@ -33,7 +33,7 @@ docker-compose up -d
 
 - **Nakama API**: `http://127.0.0.1:7350`
 - **Console**: `http://127.0.0.1:8080` (admin / password)
-- Runtime path is set to `/local/modules` (project root is mounted at `/local`).
+- Runtime path is set to `/local/backend/modules` (project root is mounted at `/local`).
 
 ### 3. (Optional) Admin secret for `rpc_grant_item`
 

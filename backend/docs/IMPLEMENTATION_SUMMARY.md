@@ -7,7 +7,7 @@
 ## 1. Project overview
 
 - **What it is:** A Nakama-backed game server for a **unit + equipment** system (no combat, cards, or drops yet). Players have a profile, wallet (gold), and an inventory of **items** (equippable) and **units** (characters with 3 equipment slots).
-- **Stack:** Nakama 3.25 (Go runtime), PostgreSQL, Docker Compose. Backend is a **Go plugin** (`nakama-module/`) built to `modules/game.so` and loaded by Nakama.
+- **Stack:** Nakama 3.25 (Go runtime), PostgreSQL, Docker Compose. Backend is a **Go plugin** (`backend/nakama-module/`) built to `backend/modules/game.so` and loaded by Nakama.
 - **Client:** No game client in this repo. All interaction is via Nakama HTTP/gRPC (authenticate → call RPCs). Optional Python backend for AI/image generation is described in docs but not implemented.
 
 ---
@@ -58,10 +58,10 @@ All RPCs (except `rpc_grant_item` when using `targetUserId` without session) req
 
 ## 5. Code layout
 
-- **`nakama-module/contract.go`** — Constants and validators: collection/key names, `AllowedStats`, `AllowedRarities`, `AllowedSlots`, `EquipmentSlotKeys`, and `isAllowed*` helpers.
-- **`nakama-module/main.go`** — Structs (Profile, Wallet, ItemInstance, UnitInstance, Inventory), storage helpers (read/write with 0,0 permissions), `ensureProfileAndWallet` (load or create profile/wallet/inventory), validation (`validateUnitStats`, `validateBonuses`), and the five RPC handlers. `InitModule` registers all RPCs.
-- **`modules/`** — Target for built plugin: `game.so`. Nakama loads this from `NAKAMA_RUNTIME_PATH` (Docker: `/local/modules` → `./modules`).
-- **`docker-compose.yml`** — Postgres 15 + Nakama 3.25; project root mounted at `/local`; ports 7349, 7350, 8080 (console).
+- **`backend/nakama-module/contract.go`** — Constants and validators: collection/key names, `AllowedStats`, `AllowedRarities`, `AllowedSlots`, `EquipmentSlotKeys`, and `isAllowed*` helpers.
+- **`backend/nakama-module/main.go`** — Structs (Profile, Wallet, ItemInstance, UnitInstance, Inventory), storage helpers (read/write with 0,0 permissions), `ensureProfileAndWallet` (load or create profile/wallet/inventory), validation (`validateUnitStats`, `validateBonuses`), and the five RPC handlers. `InitModule` registers all RPCs.
+- **`backend/modules/`** — Target for built plugin: `game.so`. Nakama loads this from `NAKAMA_RUNTIME_PATH` (Docker: `/local/backend/modules`).
+- **`docker-compose.yml`** — Postgres 15 + Nakama 3.25 + generation-service; project root mounted at `/local`; ports 7349, 7350, 8080 (console), 8000 (generation).
 
 ---
 
@@ -89,7 +89,7 @@ All RPCs (except `rpc_grant_item` when using `targetUserId` without session) req
 
 ## 8. How to run and extend
 
-- **Build plugin:** From repo root, use Heroic Labs plugin builder (see README_NAKAMA_BACKEND.md) or build Go plugin with same Go version as Nakama (e.g. Go 1.21 for 3.25), output `modules/game.so`.
+- **Build plugin:** From repo root, use Heroic Labs plugin builder (see README_NAKAMA_BACKEND.md) or build Go plugin with same Go version as Nakama (e.g. Go 1.21 for 3.25), output `backend/modules/game.so`.
 - **Run:** `docker-compose up -d`. API: `http://127.0.0.1:7350`. Console: `http://127.0.0.1:8080` (admin/password).
 - **New implementations:** Keep storage and RPC shapes within GAME_CONTRACT_SCHEMAS.md; add new RPCs in `main.go` and register in `InitModule`; add new validation in `contract.go` if new enums or keys are introduced. For new features (e.g. combat), prefer new RPCs and/or Nakama match handlers rather than changing existing storage shapes.
 
