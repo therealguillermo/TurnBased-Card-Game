@@ -31,8 +31,14 @@ def get_template(catalog_path: str, template_id: str) -> dict | None:
     return None
 
 
-def generate_placeholder(template_id: str, size: int = DEFAULT_ART_SIZE) -> Image.Image:
+def generate_placeholder(
+    template_id: str,
+    size: int = DEFAULT_ART_SIZE,
+    *,
+    display_name: str | None = None,
+) -> Image.Image:
     """Create a simple placeholder image (no API)."""
+    label = (display_name or template_id).strip() or template_id
     # Distinct hue per template for variety (hash template_id to get a stable color)
     h = hash(template_id) % 360
     # Use a muted saturation/value so it's not harsh
@@ -48,7 +54,7 @@ def generate_placeholder(template_id: str, size: int = DEFAULT_ART_SIZE) -> Imag
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size // 8)
         except OSError:
             font = ImageFont.load_default()
-        text = template_id[:12]
+        text = (label or template_id)[:12]
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         xy = ((size - tw) // 2, (size - th) // 2)
@@ -63,27 +69,34 @@ def generate_and_save(
     size: int = DEFAULT_ART_SIZE,
     use_ai: bool = False,
     api_key: str | None = None,
+    *,
+    display_name: str | None = None,
+    prompt_description: str | None = None,
 ) -> Path:
     """
     Generate art for the given templateId and save to art_dir.
+    If templateId is not in the catalog, display_name or prompt_description must be provided.
     Returns the path to the saved file.
-    Uses placeholder if use_ai is False or api_key is missing.
     """
     template = get_template(catalog_path, template_id)
     if not template:
-        raise ValueError(f"Unknown templateId: {template_id}")
+        if not (display_name or prompt_description):
+            raise ValueError(
+                f"Unknown templateId: {template_id}. Provide displayName or promptDescription for AI-generated templates."
+            )
+        display_name = (display_name or prompt_description or template_id).strip()
 
     art_dir = Path(art_dir)
     art_dir.mkdir(parents=True, exist_ok=True)
     out_path = art_dir / f"{template_id}.png"
+    label = display_name or (template.get("displayName") if template else None) or template_id
 
     if use_ai and api_key:
-        # Optional: call OpenAI or Replicate here
-        # img = generate_via_openai(template, api_key, size)
+        # Optional: call OpenAI or Replicate here using (template or prompt_description)
         # For now, fall back to placeholder
-        img = generate_placeholder(template_id, size)
+        img = generate_placeholder(template_id, size, display_name=label)
     else:
-        img = generate_placeholder(template_id, size)
+        img = generate_placeholder(template_id, size, display_name=label)
 
     img.save(out_path, "PNG")
     return out_path

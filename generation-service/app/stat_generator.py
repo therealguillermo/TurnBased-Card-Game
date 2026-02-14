@@ -1,14 +1,20 @@
 """
 Stat generation for units and items. Prompts adhere strictly to stat_generation_rules.txt.
+Supports any unit/item type (no catalog required); type controls via allowedArchetypes / allowedSlots.
 """
 import json
 import os
+import re
+import secrets
 from pathlib import Path
 
 # Game contract constants (must match nakama-module/contract.go)
 RARITIES = ("Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic")
 SLOTS = ("Weapon", "Armor", "Relic")
 STAT_KEYS = ("hp_max", "stamina_max", "mana_max", "melee", "ranged", "magic", "maneuver")
+
+# From rules: unit archetypes (for type controls)
+UNIT_ARCHETYPES = ("Melee Specialist", "Ranger", "Mage", "Monster Brute", "Hybrid")
 
 # From rules: unit rarity budget range (min, max inclusive)
 UNIT_BUDGET_RANGES = {
@@ -53,6 +59,12 @@ MYTHIC_MODIFIERS = (
 )
 
 
+def suggest_template_id(name: str) -> str:
+    """Produce a stable templateId from a name (for AI-generated units/items not in catalog)."""
+    slug = re.sub(r"[^a-z0-9]+", "_", (name or "gen").lower()).strip("_") or "gen"
+    return f"{slug}_{secrets.token_hex(3)}"
+
+
 def load_rules(rules_path: str) -> str:
     """Load the full stat generation rules text."""
     path = Path(rules_path)
@@ -67,6 +79,7 @@ def build_unit_prompt(
     template_id: str | None = None,
     display_name: str | None = None,
     archetype: str | None = None,
+    allowed_archetypes: list[str] | None = None,
 ) -> str:
     """Build the user prompt for unit generation. Rules text is the system prompt."""
     if rarity not in RARITIES:
@@ -78,6 +91,12 @@ def build_unit_prompt(
         parts.append(f"Use for name/flavor: templateId={template_id or 'any'}, displayName={display_name or 'any'}.")
     if archetype:
         parts.append(f"Archetype (MUST use this one): {archetype}.")
+    elif allowed_archetypes:
+        valid = [a for a in allowed_archetypes if a in UNIT_ARCHETYPES]
+        if valid:
+            parts.append(f"Archetype MUST be exactly one of: {', '.join(valid)}.")
+        else:
+            parts.append("Choose exactly ONE archetype from: Melee Specialist, Ranger, Mage, Monster Brute, Hybrid.")
     else:
         parts.append("Choose exactly ONE archetype from: Melee Specialist, Ranger, Mage, Monster Brute, Hybrid.")
     parts.append(
@@ -213,19 +232,26 @@ def generate_unit(
     template_id: str | None = None,
     display_name: str | None = None,
     archetype: str | None = None,
+    allowed_archetypes: list[str] | None = None,
     api_key: str | None = None,
 ) -> dict:
     """
     Generate unit stats. Uses OpenAI when api_key is set, else returns a valid placeholder.
-    Returns dict with name, rarity, archetype, stats (all 7 keys), total_budget.
+    Works without templateId (AI invents name). Returns name, rarity, archetype, stats, total_budget, suggestedTemplateId.
     """
     if rarity not in RARITIES:
         raise ValueError(f"Invalid rarity: {rarity}")
+    if allowed_archetypes and archetype and archetype not in allowed_archetypes:
+        raise ValueError(f"archetype {archetype} not in allowed_archetypes")
 
     if api_key:
         rules = load_rules(rules_path)
         user_prompt = build_unit_prompt(
-            rarity, template_id=template_id, display_name=display_name, archetype=archetype
+            rarity,
+            template_id=template_id,
+            display_name=display_name,
+            archetype=archetype,
+            allowed_archetypes=allowed_archetypes,
         )
         try:
             from openai import OpenAI
@@ -247,6 +273,8 @@ def generate_unit(
             data["stats"] = {k: int(data["stats"][k]) for k in STAT_KEYS}
             validate_unit_payload(rarity, data)
             data["total_budget"] = round(_compute_unit_budget(data["stats"]), 2)
+            name = (data.get("name") or "").strip() or f"Unit_{rarity}"
+            data["suggestedTemplateId"] = suggest_template_id(name)
             return data
         except Exception as e:
             raise RuntimeError(f"AI unit generation failed: {e}") from e
@@ -273,12 +301,15 @@ def generate_unit(
         placeholder_stats["melee"] = min(cap, placeholder_stats["melee"] + int(lo - budget))
     elif budget > hi:
         placeholder_stats["melee"] = max(0, placeholder_stats["melee"] - int(budget - hi))
+    name = display_name or template_id or f"Unit_{rarity}"
+    arch = archetype or (allowed_archetypes[0] if allowed_archetypes else "Melee Specialist")
     return {
-        "name": display_name or template_id or f"Unit_{rarity}",
+        "name": name,
         "rarity": rarity,
-        "archetype": "Melee Specialist",
+        "archetype": arch,
         "stats": {k: int(placeholder_stats[k]) for k in STAT_KEYS},
         "total_budget": round(_compute_unit_budget(placeholder_stats), 2),
+        "suggestedTemplateId": suggest_template_id(name),
     }
 
 
@@ -293,7 +324,7 @@ def generate_item(
 ) -> dict:
     """
     Generate item stats and optional modifier. Uses OpenAI when api_key is set, else placeholder.
-    Returns dict with name, rarity, slot, bonuses, modifier (or null), total_budget_used.
+    Works without templateId (AI invents name). Returns name, rarity, slot, bonuses, modifier, total_budget_used, suggestedTemplateId.
     """
     if rarity not in RARITIES:
         raise ValueError(f"Invalid rarity: {rarity}")
@@ -326,11 +357,13 @@ def generate_item(
                 data["modifier"] = None
             validate_item_payload(rarity, slot, data)
             data["total_budget_used"] = round(_compute_item_budget(data["bonuses"]), 2)
+            name = (data.get("name") or "").strip() or f"{slot}_{rarity}"
+            data["suggestedTemplateId"] = suggest_template_id(name)
             return data
         except Exception as e:
             raise RuntimeError(f"AI item generation failed: {e}") from e
 
-    # Placeholder: valid Common Weapon (budget 2, one combat stat)
+    # Placeholder: valid item
     lo, hi = ITEM_BUDGET_RANGES[rarity]
     if slot == "Weapon":
         bonuses = {"melee": min(2, hi)}
@@ -341,11 +374,13 @@ def generate_item(
     budget = _compute_item_budget(bonuses)
     if budget < lo and slot == "Weapon":
         bonuses["melee"] = min(6, bonuses.get("melee", 0) + 1)
+    name = display_name or template_id or f"{slot}_{rarity}"
     return {
-        "name": display_name or template_id or f"{slot}_{rarity}",
+        "name": name,
         "rarity": rarity,
         "slot": slot,
         "bonuses": {k: int(v) for k, v in bonuses.items()},
-        "modifier": None if rarity in ("Common", "Uncommon", "Rare", "Epic") else None,
+        "modifier": None,
         "total_budget_used": round(_compute_item_budget(bonuses), 2),
+        "suggestedTemplateId": suggest_template_id(name),
     }
