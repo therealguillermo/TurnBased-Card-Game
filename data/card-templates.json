@@ -1,0 +1,35 @@
+[
+  {
+    "templateId": "warrior_01",
+    "type": "unit",
+    "displayName": "Warrior",
+    "promptDescription": "fantasy knight in heavy armor, front view, game sprite"
+  },
+  {
+    "templateId": "mage_01",
+    "type": "unit",
+    "displayName": "Mage",
+    "promptDescription": "fantasy wizard with robe and staff, front view, game sprite"
+  },
+  {
+    "templateId": "sword_01",
+    "type": "item",
+    "slot": "Weapon",
+    "displayName": "Iron Sword",
+    "promptDescription": "medieval iron sword, item icon, game sprite"
+  },
+  {
+    "templateId": "shield_01",
+    "type": "item",
+    "slot": "Armor",
+    "displayName": "Wooden Shield",
+    "promptDescription": "round wooden shield, item icon, game sprite"
+  },
+  {
+    "templateId": "amulet_01",
+    "type": "item",
+    "slot": "Relic",
+    "displayName": "Amulet",
+    "promptDescription": "magical amulet pendant, item icon, game sprite"
+  }
+]

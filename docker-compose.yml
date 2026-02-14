@@ -53,5 +53,19 @@ services:
       timeout: 5s
       retries: 5
 
+  generation-service:
+    build: ./generation-service
+    container_name: card-generation-service
+    environment:
+      ASSETS_DIR: /app/assets
+      CATALOG_PATH: /app/data/card-templates.json
+      # Optional: set OPENAI_API_KEY to use AI generation instead of placeholders
+    volumes:
+      - ./assets:/app/assets
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
 volumes:
   postgres_data:

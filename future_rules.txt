@@ -1,0 +1,331 @@
+Absolutely. Here is a **clean, structured, implementation-ready summary** of your high-tier modifier system and generation rules. This is formatted as a design spec you can save and reference later.
+
+---
+
+# 🎮 HIGH-TIER MODIFIER SYSTEM — OFFICIAL DESIGN SPEC (v1)
+
+This document defines:
+
+* Modifier architecture
+* Trigger system
+* Legendary modifier pool
+* Mythic modifier pool
+* Slot restrictions
+* AI generation rules
+* Implementation requirements
+
+---
+
+# 1️⃣ Core Philosophy
+
+Legendary modifiers:
+
+> Build-defining, strong but controlled.
+
+Mythic modifiers:
+
+> Rule-bending, rare, and potentially game-changing.
+
+AI may only select from predefined modifier IDs.
+No free-text effects are allowed.
+
+---
+
+# 2️⃣ Modifier Architecture
+
+Every modifier must follow this structure:
+
+```json
+{
+  "id": "MOD_ID",
+  "tier": "Legendary | Mythic",
+  "allowed_slots": ["Weapon", "Armor", "Relic"],
+  "trigger": "TriggerEvent",
+  "effect": "EffectHandler",
+  "param_schema": {},
+  "text_template": "Human readable description."
+}
+```
+
+Modifiers are defined in a central registry (e.g. `modifiers.json`).
+
+Items reference modifiers by ID + parameters only.
+
+---
+
+# 3️⃣ Combat Trigger Events (Locked List)
+
+These are the only legal modifier trigger points:
+
+* `CombatStart`
+* `TurnStart`
+* `BeforeAction`
+* `AfterAction`
+* `OnDamageDealt`
+* `OnDamageTaken`
+* `OnKill`
+* `CombatEnd`
+
+All modifiers must hook into one of these.
+
+---
+
+# 4️⃣ Legendary Modifier Pool (v1)
+
+## Resource Control
+
+### MOD_FREE_FIRST_ATTACK
+
+* Trigger: `TurnStart`
+* Effect: First `{attack_type}` action costs 0 `{resource}`
+
+### MOD_REFUND_RESOURCE_ON_ACTION
+
+* Trigger: `AfterAction`
+* Effect: Refund `{amount}` of `{resource}`
+
+### MOD_GAIN_RESOURCE_ON_KILL
+
+* Trigger: `OnKill`
+* Effect: Gain `{amount}` stamina or mana
+
+---
+
+## Damage Shaping
+
+### MOD_BONUS_DAMAGE_FIRST_ACTION
+
+* Trigger: `AfterAction`
+* Effect: First action in combat deals `{bonus}` extra damage
+
+### MOD_EXECUTE_LOW_HP
+
+* Trigger: `OnDamageDealt`
+* Effect: Extra damage if target below `{threshold}%` HP
+
+### MOD_ARMOR_PIERCE
+
+* Trigger: `BeforeAction`
+* Effect: Ignore `{percent}%` armor
+
+---
+
+## Status Effects
+
+### MOD_APPLY_STATUS_ON_HIT
+
+* Trigger: `OnDamageDealt`
+* Effect: Apply `{status}` for `{duration}`
+
+Allowed statuses (v1):
+
+* Bleed
+* Burn
+* Weaken
+* Stun
+
+---
+
+## Sustain & Defense
+
+### MOD_HEAL_ON_HIT
+
+* Trigger: `OnDamageDealt`
+* Effect: Heal `{amount}`
+
+### MOD_SHIELD_COMBAT_START
+
+* Trigger: `CombatStart`
+* Effect: Gain temporary shield `{amount}`
+
+### MOD_DAMAGE_REDUCTION_LOW_HP
+
+* Trigger: `OnDamageTaken`
+* Effect: Reduce damage below `{threshold}%` HP
+
+---
+
+# 5️⃣ Mythic Modifier Pool (v1)
+
+Mythic modifiers are limited and rare.
+
+---
+
+## Action Economy
+
+### MOD_SECOND_ACTION_EACH_TURN
+
+* Trigger: `TurnStart`
+* Effect: Gain 1 extra action
+
+---
+
+## Cost Conversion
+
+### MOD_HP_INSTEAD_OF_RESOURCE
+
+* Trigger: `BeforeAction`
+* Effect: `{attack_type}` actions cost HP instead
+
+---
+
+## Stat Conversion
+
+### MOD_CONVERT_RESOURCE_TO_STAT
+
+* Trigger: `CombatStart`
+* Effect: Convert stamina/mana to attack stat
+
+### MOD_HIGHEST_STAT_APPLIES
+
+* Trigger: `CombatStart`
+* Effect: Use highest attack stat for `{attack_type}`
+
+---
+
+## Death Mechanics
+
+### MOD_CHEAT_DEATH_ONCE
+
+* Trigger: `OnDamageTaken`
+* Effect: Survive lethal damage once
+
+---
+
+## Scaling Mechanics
+
+### MOD_GAIN_STAT_ON_ACTION
+
+* Trigger: `AfterAction`
+* Effect: Gain +1 `{stat}` after `{attack_type}` (stacking)
+
+---
+
+# 6️⃣ Slot Restrictions (Locked Rules)
+
+### Weapon can roll:
+
+* Resource modifiers (attack-specific)
+* Damage shaping
+* Status on hit
+* Scaling modifiers
+* Highest-stat conversion
+
+### Armor can roll:
+
+* Shields
+* Damage reduction
+* Cheat death
+* Defensive sustain
+
+### Relic can roll:
+
+* Resource refunds
+* Stat conversion
+* Extra action
+* Hybrid or unusual effects
+
+---
+
+# 7️⃣ AI Generation Rules
+
+When generating a Legendary/Mythic item:
+
+1. Select rarity
+2. Select allowed modifier ID
+3. Generate parameters within defined bounds
+4. Deduct modifier cost from stat budget
+5. Validate stat caps
+6. Reject if constraints violated
+
+AI cannot:
+
+* Combine two Mythic rule-breakers
+* Use undefined modifiers
+* Exceed stat caps
+* Create new triggers
+
+---
+
+# 8️⃣ Modifier Cost Budgeting
+
+Legendary modifier cost:
+
+* 4–6 stat points
+
+Mythic modifier cost:
+
+* 6–10 stat points
+
+Items must reduce raw stat bonuses accordingly.
+
+---
+
+# 9️⃣ Required Engine Implementation
+
+You must implement:
+
+1. Modifier Registry (`id -> handler`)
+2. Event dispatcher system
+3. Combat context state tracking:
+
+   * First action
+   * Action count per turn
+   * Temporary stat modifiers
+   * Shield tracking
+   * Status tracking
+
+---
+
+# 🔟 Status System (Required for MOD_APPLY_STATUS_ON_HIT)
+
+Minimum status library:
+
+* Bleed → Damage per turn
+* Burn → Magic damage per turn
+* Weaken → Reduced attack stat
+* Stun → Skip next action
+
+Statuses must support:
+
+* duration
+* stacks (optional)
+* per-turn trigger
+
+---
+
+# 11️⃣ Core Design Guarantees
+
+This system:
+
+✔ Prevents undefined AI behavior
+✔ Keeps modifiers finite and controllable
+✔ Allows infinite item generation
+✔ Supports strong Legendary identity
+✔ Keeps Mythics rare and exciting
+✔ Is extensible without breaking combat
+
+---
+
+# 📌 Final Design Principle
+
+Legendary:
+
+> “I want to build around this.”
+
+Mythic:
+
+> “This changes how combat works.”
+
+AI may only assemble from approved pieces.
+All behavior must exist in the engine.
+
+---
+
+If you want, next I can generate:
+
+* A clean `modifiers.json` file template
+* A matching `statuses.json` file
+* Or a minimal combat event flow diagram for implementation
+
+This is now a fully structured, scalable modifier system.

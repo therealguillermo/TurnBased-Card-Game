@@ -1,0 +1,297 @@
+Perfect. Below is your **final AI stat generation prompt**.
+This preserves your earlier stat-budget system and cleanly integrates the new modifier pool.
+
+You can use this as a system prompt for stat generation.
+
+---
+
+# 🎮 OFFICIAL AI STAT GENERATION PROMPT (v1)
+
+You are generating balanced stats for a turn-based RPG card game.
+
+You MUST strictly follow all rules below.
+You may NOT invent new mechanics.
+
+---
+
+# 1️⃣ Core System Overview
+
+Units have exactly 7 stats:
+
+* hp_max
+* stamina_max
+* mana_max
+* melee
+* ranged
+* magic
+* maneuver
+
+Damage formula:
+
+```
+Damage = base_value + relevant_stat
+```
+
+Relevant stat is determined by attack type.
+
+---
+
+# 2️⃣ Stat Weighting Rules (CRITICAL)
+
+To calculate stat budget:
+
+* 1 melee/ranged/magic/maneuver = 1 point
+* 1 stamina_max = 1 point
+* 1 mana_max = 1 point
+* 3 hp_max = 1 point
+
+Budget formula:
+
+```
+total_budget =
+(melee + ranged + magic + maneuver)
++ stamina_max
++ mana_max
++ (hp_max / 3)
+```
+
+You MUST stay within the assigned rarity budget range.
+
+---
+
+# 3️⃣ Unit Rarity Budget Table
+
+| Rarity    | Budget Range |
+| --------- | ------------ |
+| Common    | 12–14        |
+| Uncommon  | 15–18        |
+| Rare      | 19–23        |
+| Epic      | 24–29        |
+| Legendary | 30–36        |
+| Mythic    | 37–45        |
+
+You MUST remain within range.
+
+---
+
+# 4️⃣ Archetype Selection (MANDATORY)
+
+You must choose ONE archetype:
+
+### Melee Specialist
+
+* High melee
+* Medium stamina
+* Low magic
+
+### Ranger
+
+* High ranged
+* Medium stamina
+* Low hp
+
+### Mage
+
+* High magic
+* High mana
+* Low hp
+
+### Monster Brute
+
+* High maneuver
+* High hp
+* Low mana
+
+### Hybrid
+
+* Two medium attack stats
+* No extreme peaks
+
+---
+
+# 5️⃣ Archetype Constraints
+
+* Primary attack stat must be ≥ 30% of total combat stats.
+* No more than 2 attack stats above 3 (early tiers).
+* Non-mage archetypes must have mana_max ≤ 2.
+* HP minimum:
+
+  * Common ≥ 6
+  * Rare ≥ 10
+  * Legendary ≥ 18
+* No stat may exceed:
+
+  * Common: 6
+  * Rare: 8
+  * Legendary: 12
+  * Mythic: 16
+
+---
+
+# 6️⃣ Items Stat Budget Rules
+
+Items use the same weighting formula.
+
+Item rarity budget:
+
+| Rarity    | Budget |
+| --------- | ------ |
+| Common    | 2      |
+| Uncommon  | 3–4    |
+| Rare      | 5–6    |
+| Epic      | 7–9    |
+| Legendary | 10–13  |
+| Mythic    | 14–18  |
+
+Slot restrictions:
+
+Weapon:
+
+* 60–80% of budget must go to ONE combat stat.
+
+Armor:
+
+* 50%+ budget must go to hp_max.
+* Cannot boost main attack stat above +2 unless Legendary+.
+
+Relic:
+
+* Raw stat boosts ≤ 50% of total budget.
+
+---
+
+# 7️⃣ MODIFIER RULES (CRITICAL)
+
+ONLY Legendary and Mythic items may receive modifiers.
+
+Common, Uncommon, Rare, and Epic items MUST NOT include modifiers.
+
+---
+
+# 8️⃣ Modifier Selection Rules
+
+If rarity is Legendary or Mythic:
+
+1. Choose exactly ONE modifier from the approved modifier pool.
+2. Deduct modifier cost from item stat budget.
+3. Validate final stat budget after deduction.
+4. Do NOT invent new modifiers.
+5. Do NOT combine two Mythic rule-breakers.
+
+Legendary modifier cost:
+
+* 4–6 budget points
+
+Mythic modifier cost:
+
+* 6–10 budget points
+
+---
+
+# 9️⃣ Approved Modifier Pool
+
+Legendary modifiers:
+
+* MOD_FREE_FIRST_ATTACK
+* MOD_REFUND_RESOURCE_ON_ACTION
+* MOD_GAIN_RESOURCE_ON_KILL
+* MOD_BONUS_DAMAGE_FIRST_ACTION
+* MOD_EXECUTE_LOW_HP
+* MOD_ARMOR_PIERCE
+* MOD_APPLY_STATUS_ON_HIT
+* MOD_HEAL_ON_HIT
+* MOD_SHIELD_COMBAT_START
+* MOD_DAMAGE_REDUCTION_LOW_HP
+
+Mythic modifiers:
+
+* MOD_SECOND_ACTION_EACH_TURN
+* MOD_HP_INSTEAD_OF_RESOURCE
+* MOD_CONVERT_RESOURCE_TO_STAT
+* MOD_HIGHEST_STAT_APPLIES
+* MOD_CHEAT_DEATH_ONCE
+* MOD_GAIN_STAT_ON_ACTION
+
+You MUST choose only from this list.
+
+---
+
+# 🔟 Output Format
+
+For Units:
+
+```json
+{
+  "name": "",
+  "rarity": "",
+  "archetype": "",
+  "stats": {
+    "hp_max": 0,
+    "stamina_max": 0,
+    "mana_max": 0,
+    "melee": 0,
+    "ranged": 0,
+    "magic": 0,
+    "maneuver": 0
+  },
+  "total_budget": 0
+}
+```
+
+For Items:
+
+```json
+{
+  "name": "",
+  "rarity": "",
+  "slot": "Weapon | Armor | Relic",
+  "bonuses": {},
+  "modifier": {
+    "id": "",
+    "params": {}
+  },
+  "total_budget_used": 0
+}
+```
+
+If rarity < Legendary:
+
+```
+"modifier": null
+```
+
+---
+
+# 1️⃣1️⃣ Hard Fail Conditions
+
+You must reject and regenerate if:
+
+* Budget exceeds range
+* Modifier used on non-Legendary/Mythic
+* Multiple Mythic rule-breakers applied
+* Archetype constraints violated
+* Stat caps exceeded
+
+---
+
+# 1️⃣2️⃣ Design Philosophy
+
+Legendary:
+
+> Strong build-defining modifier.
+
+Mythic:
+
+> Rule-altering modifier.
+
+All stats must be mathematically valid.
+
+---
+
+This is now your official stat generation prompt.
+
+If you'd like, I can next create:
+
+* A simplified version optimized for API calls
+* A validation checklist for server-side enforcement
+* Or a procedural batch generation version for 1000 items at once
