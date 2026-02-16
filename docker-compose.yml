@@ -1,4 +1,3 @@
-version: '3'
 services:
   postgres:
     container_name: nakama-postgres
@@ -24,28 +23,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      # Database
-      NAKAMA_DATABASE_URL: "postgres://postgres:localdb@postgres:5432/nakama?sslmode=disable"
-      # Server
-      NAKAMA_HOST: "0.0.0.0"
-      NAKAMA_PORT: "7349"
-      NAKAMA_SERVER_KEY: "defaultkey"
-      NAKAMA_CONSOLE_KEY: "defaultkey"
-      NAKAMA_CONSOLE_USERNAME: "admin"
-      NAKAMA_CONSOLE_PASSWORD: "password"
-      # Runtime: load Go module from mounted volume (put built game.so in backend/modules/)
-      NAKAMA_RUNTIME_PATH: "/local/backend/modules"
-      # Optional: for rpc_grant_item admin-only RPC (testing)
-      # ADMIN_SECRET: "your-secret"
-      # Logging
-      NAKAMA_LOG_LEVEL: "INFO"
+    entrypoint:
+      - "/bin/sh"
+      - "-ecx"
+      - >
+        /nakama/nakama migrate up --database.address postgres:localdb@postgres:5432/nakama &&
+        exec /nakama/nakama --name nakama1
+        --database.address postgres:localdb@postgres:5432/nakama
+        --runtime.path /local/backend/modules
+        --logger.level INFO
     volumes:
       - ./:/local
     ports:
-      - "7349:7349"   # Nakama server
+      - "7349:7349"   # Nakama gRPC
       - "7350:7350"   # Nakama HTTP API
-      - "8080:8080"   # Nakama Console (admin UI)
+      - "8080:7351"   # Nakama Console (admin UI; container listens on 7351)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/nakama/nakama", "healthcheck"]

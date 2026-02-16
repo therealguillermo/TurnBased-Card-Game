@@ -1,5 +1,7 @@
 module game
 
-go 1.20
+go 1.23.3
 
-require github.com/heroiclabs/nakama-common v1.44.0
+require github.com/heroiclabs/nakama-common v1.35.0
+
+require google.golang.org/protobuf v1.35.2 // indirect

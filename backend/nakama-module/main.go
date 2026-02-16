@@ -80,7 +80,7 @@ func generateInstanceId() string {
 func mustGetUserId(ctx context.Context) (string, error) {
 	uid, ok := ctx.Value(runtime.RUNTIME_CTX_USER_ID).(string)
 	if !ok || uid == "" {
-		return "", errResp(CodePermission, "user_id_required")
+		return errResp(CodePermission, "user_id_required")
 	}
 	return uid, nil
 }
