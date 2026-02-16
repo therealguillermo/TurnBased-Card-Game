@@ -1,7 +1,24 @@
 import { Client, Session } from '@heroiclabs/nakama-js'
 import type { GameState } from '../types'
 
-const NAKAMA_URL = import.meta.env.VITE_NAKAMA_URL ?? 'http://127.0.0.1:7350'
+/** Nakama JS Client expects (serverkey, host, port), not a full URL. Parse env URL into host/port. */
+function getNakamaHostPort(): { host: string; port: string; useSSL: boolean } {
+  const raw = (import.meta.env.VITE_NAKAMA_URL ?? 'http://127.0.0.1:7350').trim()
+  const url = raw.replace(/^http\/\//i, 'http://').replace(/^https\/\//i, 'https://')
+  const withScheme = /^https?:\/\//i.test(url) ? url : 'http://' + url
+  try {
+    const parsed = new URL(withScheme)
+    return {
+      host: parsed.hostname,
+      port: parsed.port || (parsed.protocol === 'https:' ? '443' : '7350'),
+      useSSL: parsed.protocol === 'https:',
+    }
+  } catch {
+    return { host: '127.0.0.1', port: '7350', useSSL: false }
+  }
+}
+
+const { host: NAKAMA_HOST, port: NAKAMA_PORT, useSSL: NAKAMA_SSL } = getNakamaHostPort()
 const SERVER_KEY = import.meta.env.VITE_NAKAMA_SERVER_KEY ?? 'defaultkey'
 
 let client: Client
@@ -9,7 +26,7 @@ let session: Session | null = null
 
 export function getClient(): Client {
   if (!client) {
-    client = new Client(SERVER_KEY, NAKAMA_URL)
+    client = new Client(SERVER_KEY, NAKAMA_HOST, NAKAMA_PORT, NAKAMA_SSL)
   }
   return client
 }
