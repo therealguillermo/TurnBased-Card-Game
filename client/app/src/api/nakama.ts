@@ -64,6 +64,28 @@ export async function loginWithDevice(deviceId: string): Promise<Session> {
   return s
 }
 
+/** Sign up with email and password (create account). Optional username for display. */
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  username?: string
+): Promise<Session> {
+  const c = getClient()
+  const s = await c.authenticateEmail(email, password, true, username)
+  session = s
+  persistSession(s)
+  return s
+}
+
+/** Sign in with email and password. */
+export async function loginWithEmail(email: string, password: string): Promise<Session> {
+  const c = getClient()
+  const s = await c.authenticateEmail(email, password, false)
+  session = s
+  persistSession(s)
+  return s
+}
+
 export async function getState(): Promise<GameState> {
   const s = session ?? restoreSession()
   if (!s) throw new Error('Not logged in')
