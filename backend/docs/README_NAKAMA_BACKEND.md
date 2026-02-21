@@ -8,22 +8,17 @@ Backend enforces the locked game contract: 7 unit stats, 3 equipment slots (weap
 
 ### 1. Build the Go plugin
 
-The module must be built as a **shared object** with the **same Go version** as the Nakama server (Nakama 3.25 is built with a specific Go version). Easiest is to use Heroic Labs’ plugin builder image:
+The plugin must be built so it matches Nakama’s runtime: **same Go version** (go1.23.3) and **same libc**. The Nakama 3.25 image is Debian/glibc; building on Alpine/musl produces a `.so` that needs `libc.musl-x86_64.so.1` and will fail to load. The Dockerfile uses **golang:1.23.3-bookworm** so the plugin links against glibc.
+
+From the **project root**:
 
 ```bash
-# From project root
 mkdir -p backend/modules
-docker run --rm -v "$(pwd)/backend/nakama-module:/module" -v "$(pwd)/backend/modules:/out" heroiclabs/nakama-plugin-builder:go-1.21 build -o /out/game.so
+docker build -f backend/nakama-module/Dockerfile -t game-plugin ./backend/nakama-module
+docker run --rm -v "$(pwd)/backend/modules:/out" game-plugin
 ```
 
-If you don’t have the plugin-builder image, build on a Linux host with Go 1.20+ and CGO:
-
-```bash
-cd backend/nakama-module
-CGO_ENABLED=1 go build -buildmode=plugin -o ../modules/game.so .
-```
-
-Ensure `backend/modules/game.so` exists before starting Nakama.
+Then start Nakama. Ensure `backend/modules/game.so` exists before `docker compose up`.
 
 ### 2. Start Nakama with Docker Compose
 

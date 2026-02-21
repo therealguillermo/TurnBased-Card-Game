@@ -29,3 +29,7 @@ Thumbs.db
 # Node (if you add client later)
 node_modules/
 npm-debug.log
+
+# Debug output (remove when done debugging AI responses)
+backend/generation-service/app/ai_response_debug.txt
+backend/generation-service/debug_output/

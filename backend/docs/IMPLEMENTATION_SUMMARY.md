@@ -89,7 +89,7 @@ All RPCs (except `rpc_grant_item` when using `targetUserId` without session) req
 
 ## 8. How to run and extend
 
-- **Build plugin:** From repo root, use Heroic Labs plugin builder (see README_NAKAMA_BACKEND.md) or build Go plugin with same Go version as Nakama (e.g. Go 1.21 for 3.25), output `backend/modules/game.so`.
+- **Build plugin:** From repo root, build with the Dockerfile in `backend/nakama-module/` (uses Go 1.23.3 and Debian/glibc to match Nakama 3.25); output `backend/modules/game.so`. See README_NAKAMA_BACKEND.md.
 - **Run:** `docker-compose up -d`. API: `http://127.0.0.1:7350`. Console: `http://127.0.0.1:8080` (admin/password).
 - **New implementations:** Keep storage and RPC shapes within GAME_CONTRACT_SCHEMAS.md; add new RPCs in `main.go` and register in `InitModule`; add new validation in `contract.go` if new enums or keys are introduced. For new features (e.g. combat), prefer new RPCs and/or Nakama match handlers rather than changing existing storage shapes.
 

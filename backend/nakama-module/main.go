@@ -86,81 +86,107 @@ func mustGetUserId(ctx context.Context) (string, error) {
 }
 
 func readStorage(ctx context.Context, nk runtime.NakamaModule, userID, collection, key string) (string, error) {
+	val, _, err := readStorageWithVersion(ctx, nk, userID, collection, key)
+	return val, err
+}
+
+// readStorageWithVersion returns value, version (for conditional writes), and error.
+// When no object exists, returns ("", "", nil). Version is used so writes do UPDATE instead of INSERT.
+func readStorageWithVersion(ctx context.Context, nk runtime.NakamaModule, userID, collection, key string) (value, version string, err error) {
 	reads := []*runtime.StorageRead{
-		{
-			Collection: collection,
-			Key:       key,
-			UserID:    userID,
-		},
+		{Collection: collection, Key: key, UserID: userID},
 	}
 	objects, err := nk.StorageRead(ctx, reads)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(objects) == 0 {
-		return "", nil
+		return "", "", nil
 	}
-	return objects[0].Value, nil
+	obj := objects[0]
+	return obj.Value, obj.Version, nil
 }
 
+// writeStorage writes with version "*" (create or overwrite). Use writeStorageVersioned for inventory.
 func writeStorage(ctx context.Context, nk runtime.NakamaModule, userID, collection, key, value string) error {
+	_, err := writeStorageVersioned(ctx, nk, userID, collection, key, value, "*")
+	return err
+}
+
+// writeStorageVersioned writes with the given version. Use "" or "*" to create; use version from read to update.
+// Returns the new version from the write ack, or "" on error.
+func writeStorageVersioned(ctx context.Context, nk runtime.NakamaModule, userID, collection, key, value, version string) (newVersion string, err error) {
+	if version == "" {
+		version = "*"
+	}
 	writes := []*runtime.StorageWrite{
 		{
 			Collection:      collection,
 			Key:             key,
 			UserID:          userID,
 			Value:           value,
-			Version:         "*",
+			Version:         version,
 			PermissionRead:  runtime.STORAGE_PERMISSION_NO_READ,
 			PermissionWrite: runtime.STORAGE_PERMISSION_NO_WRITE,
 		},
 	}
-	_, err := nk.StorageWrite(ctx, writes)
-	return err
+	acks, err := nk.StorageWrite(ctx, writes)
+	if err != nil {
+		return "", err
+	}
+	if len(acks) > 0 && acks[0] != nil {
+		return acks[0].Version, nil
+	}
+	return "", nil
 }
 
-func ensureProfileAndWallet(ctx context.Context, nk runtime.NakamaModule, userID, username string) (*Profile, *Wallet, *Inventory, error) {
+// ensureProfileAndWallet loads or creates profile, wallet, and inventory. Returns inventoryVersion
+// so callers can pass it when writing inventory (avoids duplicate key by doing UPDATE instead of INSERT).
+func ensureProfileAndWallet(ctx context.Context, nk runtime.NakamaModule, userID, username string) (profile *Profile, wallet *Wallet, inv *Inventory, inventoryVersion string, err error) {
 	profileJSON, _ := readStorage(ctx, nk, userID, CollectionProfile, StorageKeyProfile)
 	walletJSON, _ := readStorage(ctx, nk, userID, CollectionWallet, StorageKeyWallet)
-	inventoryJSON, _ := readStorage(ctx, nk, userID, CollectionInventory, StorageKeyInventory)
+	inventoryJSON, invVersion := "", ""
+	inventoryJSON, invVersion, _ = readStorageWithVersion(ctx, nk, userID, CollectionInventory, StorageKeyInventory)
 
-	var profile Profile
+	var p Profile
 	if profileJSON == "" {
-		profile = Profile{Username: username, CreatedAt: time.Now().UTC().Format(time.RFC3339)}
-		if profile.Username == "" {
+		p = Profile{Username: username, CreatedAt: time.Now().UTC().Format(time.RFC3339)}
+		if p.Username == "" {
 			if len(userID) > 8 {
-				profile.Username = userID[:8]
+				p.Username = userID[:8]
 			} else {
-				profile.Username = userID
+				p.Username = userID
 			}
 		}
-		raw, _ := json.Marshal(profile)
+		raw, _ := json.Marshal(p)
 		if err := writeStorage(ctx, nk, userID, CollectionProfile, StorageKeyProfile, string(raw)); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, "", err
 		}
 	} else {
-		if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
-			return nil, nil, nil, err
+		if err := json.Unmarshal([]byte(profileJSON), &p); err != nil {
+			return nil, nil, nil, "", err
 		}
 	}
+	profile = &p
 
-	var wallet Wallet
+	var w Wallet
 	if walletJSON == "" {
-		wallet = Wallet{Gold: 0}
-		raw, _ := json.Marshal(wallet)
+		w = Wallet{Gold: 0}
+		raw, _ := json.Marshal(w)
 		if err := writeStorage(ctx, nk, userID, CollectionWallet, StorageKeyWallet, string(raw)); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, "", err
 		}
 	} else {
-		if err := json.Unmarshal([]byte(walletJSON), &wallet); err != nil {
-			return nil, nil, nil, err
+		if err := json.Unmarshal([]byte(walletJSON), &w); err != nil {
+			return nil, nil, nil, "", err
 		}
 	}
+	wallet = &w
 
-	inv := initInventory()
+	inv = initInventory()
 	if inventoryJSON != "" {
 		if err := json.Unmarshal([]byte(inventoryJSON), inv); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, "", err
 		}
 		if inv.Items == nil {
 			inv.Items = make(map[string]*ItemInstance)
@@ -168,8 +194,16 @@ func ensureProfileAndWallet(ctx context.Context, nk runtime.NakamaModule, userID
 		if inv.Units == nil {
 			inv.Units = make(map[string]*UnitInstance)
 		}
+		inventoryVersion = invVersion
+	} else {
+		invRaw, _ := json.Marshal(inv)
+		newVer, err := writeStorageVersioned(ctx, nk, userID, CollectionInventory, StorageKeyInventory, string(invRaw), "*")
+		if err != nil {
+			return nil, nil, nil, "", err
+		}
+		inventoryVersion = newVer
 	}
-	return &profile, &wallet, inv, nil
+	return profile, wallet, inv, inventoryVersion, nil
 }
 
 // --- Validation ---
@@ -209,7 +243,7 @@ func rpcGetState(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runt
 		return errResp(CodePermission, "user_id_required")
 	}
 	username, _ := ctx.Value(runtime.RUNTIME_CTX_USERNAME).(string)
-	profile, wallet, inv, err := ensureProfileAndWallet(ctx, nk, userID, username)
+	profile, wallet, inv, _, err := ensureProfileAndWallet(ctx, nk, userID, username)
 	if err != nil {
 		logger.Error("ensureProfileAndWallet: %v", err)
 		return errResp(CodeBadRequest, "failed_to_load_state")
@@ -263,7 +297,7 @@ func rpcCreateUnit(ctx context.Context, logger runtime.Logger, db *sql.DB, nk ru
 		return errResp(CodeInvalidArg, err.Error())
 	}
 
-	_, _, inv, err := ensureProfileAndWallet(ctx, nk, userID, "")
+	_, _, inv, invVer, err := ensureProfileAndWallet(ctx, nk, userID, "")
 	if err != nil {
 		return errResp(CodeBadRequest, "failed_to_load_inventory")
 	}
@@ -279,7 +313,7 @@ func rpcCreateUnit(ctx context.Context, logger runtime.Logger, db *sql.DB, nk ru
 	inv.Units[instanceId] = unit
 
 	invRaw, _ := json.Marshal(inv)
-	if err := writeStorage(ctx, nk, userID, CollectionInventory, StorageKeyInventory, string(invRaw)); err != nil {
+	if _, err := writeStorageVersioned(ctx, nk, userID, CollectionInventory, StorageKeyInventory, string(invRaw), invVer); err != nil {
 		return errResp(CodeBadRequest, "failed_to_save_unit")
 	}
 
@@ -331,7 +365,7 @@ func rpcGrantItem(ctx context.Context, logger runtime.Logger, db *sql.DB, nk run
 		return errResp(CodeInvalidArg, err.Error())
 	}
 
-	_, _, inv, err := ensureProfileAndWallet(ctx, nk, targetUserID, "")
+	_, _, inv, invVer, err := ensureProfileAndWallet(ctx, nk, targetUserID, "")
 	if err != nil {
 		return errResp(CodeBadRequest, "failed_to_load_inventory")
 	}
@@ -352,7 +386,7 @@ func rpcGrantItem(ctx context.Context, logger runtime.Logger, db *sql.DB, nk run
 	inv.Items[instanceId] = item
 
 	invRaw, _ := json.Marshal(inv)
-	if err := writeStorage(ctx, nk, targetUserID, CollectionInventory, StorageKeyInventory, string(invRaw)); err != nil {
+	if _, err := writeStorageVersioned(ctx, nk, targetUserID, CollectionInventory, StorageKeyInventory, string(invRaw), invVer); err != nil {
 		return errResp(CodeBadRequest, "failed_to_save_item")
 	}
 
@@ -388,7 +422,7 @@ func rpcEquipItem(ctx context.Context, logger runtime.Logger, db *sql.DB, nk run
 		return errResp(CodeInvalidArg, "slotName must be weapon, armor, or relic")
 	}
 
-	_, _, inv, err := ensureProfileAndWallet(ctx, nk, userID, "")
+	_, _, inv, invVer, err := ensureProfileAndWallet(ctx, nk, userID, "")
 	if err != nil {
 		return errResp(CodeBadRequest, "failed_to_load_inventory")
 	}
@@ -420,7 +454,7 @@ func rpcEquipItem(ctx context.Context, logger runtime.Logger, db *sql.DB, nk run
 	}
 
 	invRaw, _ := json.Marshal(inv)
-	if err := writeStorage(ctx, nk, userID, CollectionInventory, StorageKeyInventory, string(invRaw)); err != nil {
+	if _, err := writeStorageVersioned(ctx, nk, userID, CollectionInventory, StorageKeyInventory, string(invRaw), invVer); err != nil {
 		return errResp(CodeBadRequest, "failed_to_save_equipment")
 	}
 
@@ -451,7 +485,7 @@ func rpcComputeFinalStats(ctx context.Context, logger runtime.Logger, db *sql.DB
 		return errResp(CodeInvalidArg, "missing_unitInstanceId")
 	}
 
-	_, _, inv, err := ensureProfileAndWallet(ctx, nk, userID, "")
+	_, _, inv, _, err := ensureProfileAndWallet(ctx, nk, userID, "")
 	if err != nil {
 		return errResp(CodeBadRequest, "failed_to_load_inventory")
 	}

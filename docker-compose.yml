@@ -51,10 +51,14 @@ services:
     environment:
       ASSETS_DIR: /app/assets
       CATALOG_PATH: /app/data/card-templates.json
-      # Optional: set OPENAI_API_KEY to use AI generation instead of placeholders
+      # Set OPENAI_API_KEY (e.g. in a .env file) to use AI generation instead of placeholders
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Debug: raw AI responses written here (remove later)
+      DEBUG_AI_OUTPUT_PATH: /debug_output/ai_response_debug.txt
     volumes:
       - ./backend/assets:/app/assets
       - ./backend/data:/app/data
+      - ./backend/generation-service/debug_output:/debug_output
     ports:
       - "8000:8000"
     restart: unless-stopped

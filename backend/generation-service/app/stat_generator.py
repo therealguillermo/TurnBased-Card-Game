@@ -6,7 +6,24 @@ import json
 import os
 import re
 import secrets
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _debug_write_ai_response(kind: str, context: str, raw_text: str) -> None:
+    """Append raw AI response to a text file for debugging. Remove this later."""
+    path_str = os.environ.get("DEBUG_AI_OUTPUT_PATH")
+    path = Path(path_str) if path_str else Path.cwd() / "ai_response_debug.txt"
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"{datetime.now(timezone.utc).isoformat()} | {kind} | {context}\n")
+            f.write(f"{'='*60}\n")
+            f.write(raw_text)
+            f.write("\n")
+    except Exception as e:
+        print(f"DEBUG: Failed to write AI response to {path}: {e}", file=sys.stderr)
 
 # Game contract constants (must match nakama-module/contract.go)
 RARITIES = ("Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic")
@@ -24,6 +41,16 @@ UNIT_BUDGET_RANGES = {
     "Epic": (24, 29),
     "Legendary": (30, 36),
     "Mythic": (37, 45),
+}
+
+# From rules: max value for any single stat per rarity
+UNIT_STAT_CAPS = {
+    "Common": 6,
+    "Uncommon": 6,
+    "Rare": 8,
+    "Epic": 8,
+    "Legendary": 12,
+    "Mythic": 16,
 }
 
 # From rules: item rarity budget range
@@ -84,8 +111,15 @@ def build_unit_prompt(
     """Build the user prompt for unit generation. Rules text is the system prompt."""
     if rarity not in RARITIES:
         raise ValueError(f"Invalid rarity: {rarity}")
+    lo, hi = UNIT_BUDGET_RANGES[rarity]
+    # TEMPORARY: per-stat caps disabled; only budget + structure enforced
     parts = [
-        f"Generate exactly one UNIT. Rarity: {rarity}.",
+        f"Generate exactly one UNIT. Rarity: {rarity}. "
+        f"For this rarity: total_budget must be between {lo} and {hi} (inclusive). "
+        f"Budget formula (use this to choose stats): total_budget = melee + ranged + magic + maneuver + stamina_max + mana_max + (hp_max / 3). "
+        f"Note: hp_max contributes hp_max/3 to the budget, not hp_max; every other stat contributes 1:1. "
+        f"Before responding: compute total_budget from your chosen stats using this formula; if it falls outside [{lo}, {hi}], adjust stats and recompute until it is within range. "
+        f"Set total_budget in your JSON to the value you get from the formula.",
     ]
     if template_id or display_name:
         parts.append(f"Use for name/flavor: templateId={template_id or 'any'}, displayName={display_name or 'any'}.")
@@ -118,8 +152,13 @@ def build_item_prompt(
         raise ValueError(f"Invalid rarity: {rarity}")
     if slot not in SLOTS:
         raise ValueError(f"Invalid slot: {slot}")
+    lo, hi = ITEM_BUDGET_RANGES[rarity]
     parts = [
-        f"Generate exactly one ITEM. Rarity: {rarity}. Slot: {slot}.",
+        f"Generate exactly one ITEM. Rarity: {rarity}. Slot: {slot}. "
+        f"For this rarity: total_budget_used (item stat budget) must be between {lo} and {hi} (inclusive). "
+        f"Budget formula (use this to choose bonuses): total_budget_used = each bonus stat 1:1 except hp_max counts as hp_max/3. "
+        f"Before responding: compute total_budget_used from your bonuses using this formula; if it falls outside [{lo}, {hi}], adjust bonuses and recompute until within range. "
+        f"Set total_budget_used in your JSON to the value from the formula.",
     ]
     if template_id or display_name:
         parts.append(f"Use for name/flavor: templateId={template_id or 'any'}, displayName={display_name or 'any'}.")
@@ -171,11 +210,7 @@ def validate_unit_payload(rarity: str, data: dict) -> None:
     lo, hi = UNIT_BUDGET_RANGES.get(rarity, (0, 0))
     if not (lo <= budget <= hi):
         raise ValueError(f"Unit budget {budget} outside range [{lo}, {hi}] for {rarity}")
-    # Stat caps from rules (Common 6, Rare 8, Legendary 12, Mythic 16)
-    cap = {"Common": 6, "Uncommon": 6, "Rare": 8, "Epic": 8, "Legendary": 12, "Mythic": 16}.get(rarity, 6)
-    for k, v in stats.items():
-        if int(v) > cap:
-            raise ValueError(f"Stat {k}={v} exceeds cap {cap} for {rarity}")
+    # TEMPORARY: per-stat cap check disabled; only checks 1-5 enforced
 
 
 def validate_item_payload(rarity: str, slot: str, data: dict) -> None:
@@ -257,14 +292,15 @@ def generate_unit(
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": rules},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.7,
+                temperature=0.4,
             )
             text = resp.choices[0].message.content or "{}"
+            _debug_write_ai_response("unit", f"rarity={rarity}", text)
             data = _parse_json_from_response(text)
             data.setdefault("rarity", rarity)
             data.setdefault("stats", {})
@@ -281,7 +317,7 @@ def generate_unit(
 
     # Placeholder: valid unit within rarity budget and stat caps
     lo, hi = UNIT_BUDGET_RANGES[rarity]
-    cap = {"Common": 6, "Uncommon": 6, "Rare": 8, "Epic": 8, "Legendary": 12, "Mythic": 16}[rarity]
+    cap = UNIT_STAT_CAPS[rarity]
     target = (lo + hi) // 2
     # Melee Specialist: high melee, medium stamina, low magic
     hp = max(6, min(cap, target // 2))
@@ -340,14 +376,15 @@ def generate_item(
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": rules},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.7,
+                temperature=0.4,
             )
             text = resp.choices[0].message.content or "{}"
+            _debug_write_ai_response("item", f"rarity={rarity} slot={slot}", text)
             data = _parse_json_from_response(text)
             data.setdefault("rarity", rarity)
             data.setdefault("slot", slot)

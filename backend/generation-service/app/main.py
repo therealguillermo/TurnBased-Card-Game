@@ -3,9 +3,12 @@ Generation service: generate and serve card art and borders; generate stats for 
 Supports any unit/item type, type controls (archetypes, slots, rarities), and drop-type-based generation.
 """
 import json
+import logging
 import os
 import random
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,10 +84,79 @@ def serve_border(rarity: str):
     return FileResponse(path, media_type="image/png")
 
 
+# --- Drop-type-based generation (register before /generate/{template_id} so /generate/drop is matched) ---
+
+
+class GenerateDropRequest(BaseModel):
+    """Request body for POST /generate/drop."""
+    dropTypeId: str
+    rarityOverride: str | None = None
+
+
+@app.get("/drop-types")
+def list_drop_types():
+    """List all drop type definitions (for UI / drop opening)."""
+    return {"dropTypes": load_drop_types()}
+
+
+@app.post("/generate/drop")
+def generate_from_drop(body: GenerateDropRequest):
+    """
+    Generate a unit or item according to a drop type (e.g. rare_unit_drop, legendary_item_drop).
+    Uses drop type's rarities, archetypes (units), and slots (items). Optional rarityOverride to force a rarity.
+    Returns the same shape as /generate/unit or /generate/item, plus dropTypeId and kind (unit|item).
+    """
+    drop = get_drop_type(body.dropTypeId)
+    if not drop:
+        raise HTTPException(status_code=404, detail=f"Unknown dropTypeId: {body.dropTypeId}")
+    rarities = drop.get("rarities") or []
+    if not rarities:
+        raise HTTPException(status_code=400, detail=f"Drop type {body.dropTypeId} has no rarities")
+    rarity = body.rarityOverride if body.rarityOverride in RARITIES else random.choice(rarities)
+    if rarity not in RARITIES:
+        rarity = random.choice(list(RARITIES))
+
+    kind = drop.get("type") or "any"
+    if kind == "any":
+        kind = random.choice(("unit", "item"))
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    try:
+        if kind == "unit":
+            archetypes = drop.get("archetypes")
+            archetype = random.choice(archetypes) if archetypes else None
+            result = generate_unit(
+                rarity,
+                RULES_PATH,
+                display_name=None,
+                archetype=archetype,
+                allowed_archetypes=archetypes,
+                api_key=api_key,
+            )
+            result["kind"] = "unit"
+        else:
+            slots = drop.get("slots")
+            slot = random.choice(slots) if slots else random.choice(list(SLOTS))
+            result = generate_item(rarity, slot, RULES_PATH, api_key=api_key)
+            result["kind"] = "item"
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.error("Generate drop failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+
+    result["dropTypeId"] = body.dropTypeId
+    return result
+
+
+# --- Art generation (template_id must not be "drop"; use /generate/drop for drop types) ---
+
+
 class GenerateArtRequest(BaseModel):
     """Optional body for POST /generate/{template_id} when template is not in catalog."""
     displayName: str | None = None
     promptDescription: str | None = None
+    rarity: str | None = None  # Common, Uncommon, Rare, Epic, Legendary, Mythic — used for AI prompt
 
 
 @app.post("/generate/{template_id}")
@@ -95,6 +167,11 @@ def generate(template_id: str, force: bool = False, body: GenerateArtRequest | N
     For AI-generated templates not in the catalog, pass body with displayName and/or promptDescription.
     Use force=true to regenerate if file already exists.
     """
+    if template_id == "drop":
+        raise HTTPException(
+            status_code=400,
+            detail="Use POST /generate/drop with body { dropTypeId } to open a drop, not this endpoint.",
+        )
     path = ART_DIR / f"{template_id}.png"
     if path.is_file() and not force:
         return {
@@ -111,6 +188,7 @@ def generate(template_id: str, force: bool = False, body: GenerateArtRequest | N
             api_key=os.environ.get("OPENAI_API_KEY"),
             display_name=body.displayName if body else None,
             prompt_description=body.promptDescription if body else None,
+            rarity=body.rarity if body else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -179,6 +257,7 @@ def generate_unit_stats(body: GenerateUnitRequest):
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
+        logger.error("Generate unit failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e))
     return result
 
@@ -218,69 +297,6 @@ def generate_item_stats(body: GenerateItemRequest):
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
+        logger.error("Generate item failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e))
-    return result
-
-
-# --- Drop-type-based generation (for "open a rare unit drop", etc.) ---
-
-
-class GenerateDropRequest(BaseModel):
-    """Request body for POST /generate/drop."""
-    dropTypeId: str
-    rarityOverride: str | None = None
-
-
-@app.get("/drop-types")
-def list_drop_types():
-    """List all drop type definitions (for UI / drop opening)."""
-    return {"dropTypes": load_drop_types()}
-
-
-@app.post("/generate/drop")
-def generate_from_drop(body: GenerateDropRequest):
-    """
-    Generate a unit or item according to a drop type (e.g. rare_unit_drop, legendary_item_drop).
-    Uses drop type's rarities, archetypes (units), and slots (items). Optional rarityOverride to force a rarity.
-    Returns the same shape as /generate/unit or /generate/item, plus dropTypeId and kind (unit|item).
-    """
-    drop = get_drop_type(body.dropTypeId)
-    if not drop:
-        raise HTTPException(status_code=404, detail=f"Unknown dropTypeId: {body.dropTypeId}")
-    rarities = drop.get("rarities") or []
-    if not rarities:
-        raise HTTPException(status_code=400, detail=f"Drop type {body.dropTypeId} has no rarities")
-    rarity = body.rarityOverride if body.rarityOverride in RARITIES else random.choice(rarities)
-    if rarity not in RARITIES:
-        rarity = random.choice(list(RARITIES))
-
-    kind = drop.get("type") or "any"
-    if kind == "any":
-        kind = random.choice(("unit", "item"))
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-    try:
-        if kind == "unit":
-            archetypes = drop.get("archetypes")
-            archetype = random.choice(archetypes) if archetypes else None
-            result = generate_unit(
-                rarity,
-                RULES_PATH,
-                display_name=None,
-                archetype=archetype,
-                allowed_archetypes=archetypes,
-                api_key=api_key,
-            )
-            result["kind"] = "unit"
-        else:
-            slots = drop.get("slots")
-            slot = random.choice(slots) if slots else random.choice(list(SLOTS))
-            result = generate_item(rarity, slot, RULES_PATH, api_key=api_key)
-            result["kind"] = "item"
-    except (ValueError, FileNotFoundError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-    result["dropTypeId"] = body.dropTypeId
     return result
