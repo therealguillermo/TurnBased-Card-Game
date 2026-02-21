@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { getState } from '../api/nakama'
 import type { GameState } from '../types'
 import { Card } from './Card'
-import { OpenDrop } from './OpenDrop'
+import { OpenDrop, RARITIES, unitDropTypeId, itemDropTypeId } from './OpenDrop'
 
 type Props = { onLogout: () => void }
 
@@ -58,7 +58,33 @@ export function Inventory({ onLogout }: Props) {
 
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ marginTop: 0 }}>Open drop</h2>
-        <OpenDrop onOpened={refresh} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
+          <OpenDrop onOpened={refresh} dropTypeId="rare_unit_drop" label="Open drop (rare unit)" />
+          <OpenDrop onOpened={refresh} dropTypeId="all_rarities_unit_drop" label="Open unit (any rarity)" />
+          <OpenDrop onOpened={refresh} dropTypeId="all_rarities_item_drop" label="Open item (any rarity)" />
+        </div>
+        <h3 style={{ marginTop: 16, marginBottom: 8, fontSize: 14 }}>Unit by rarity (testing)</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {RARITIES.map((rarity) => (
+            <OpenDrop
+              key={`unit-${rarity}`}
+              onOpened={refresh}
+              dropTypeId={unitDropTypeId(rarity)}
+              label={`Unit ${rarity}`}
+            />
+          ))}
+        </div>
+        <h3 style={{ marginTop: 16, marginBottom: 8, fontSize: 14 }}>Item by rarity (testing)</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {RARITIES.map((rarity) => (
+            <OpenDrop
+              key={`item-${rarity}`}
+              onOpened={refresh}
+              dropTypeId={itemDropTypeId(rarity)}
+              label={`Item ${rarity}`}
+            />
+          ))}
+        </div>
       </section>
 
       <section>

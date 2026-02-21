@@ -10,11 +10,16 @@ export function getBorderUrl(rarity: string): string {
   return `${BASE}/assets/borders/${rarity}.png`
 }
 
-export async function openDrop(dropTypeId: string): Promise<DropResult> {
+export async function openDrop(
+  dropTypeId: string,
+  rarityOverride?: string
+): Promise<DropResult> {
   const res = await fetch(`${BASE}/generate/drop`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dropTypeId }),
+    body: JSON.stringify(
+      rarityOverride ? { dropTypeId, rarityOverride } : { dropTypeId }
+    ),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))

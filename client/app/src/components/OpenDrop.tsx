@@ -2,19 +2,32 @@ import { useState } from 'react'
 import { openDrop, ensureArt } from '../api/generation'
 import { createUnit } from '../api/nakama'
 
-type Props = { onOpened: () => void }
+const RARITIES = [
+  'Common',
+  'Uncommon',
+  'Rare',
+  'Epic',
+  'Legendary',
+  'Mythic',
+] as const
 
-const DROP_TYPE = 'rare_unit_drop'
+type Props = {
+  onOpened: () => void
+  dropTypeId: string
+  label?: string
+}
 
-export function OpenDrop({ onOpened }: Props) {
+export function OpenDrop({ onOpened, dropTypeId, label }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const displayLabel = label ?? `Open (${dropTypeId})`
 
   async function handleOpen() {
     setError(null)
     setLoading(true)
     try {
-      const result = await openDrop(DROP_TYPE)
+      const result = await openDrop(dropTypeId)
       if (result.kind === 'unit' && result.stats) {
         await createUnit(result.suggestedTemplateId, result.rarity, result.stats as unknown as Record<string, number>)
         try {
@@ -46,7 +59,7 @@ export function OpenDrop({ onOpened }: Props) {
           borderRadius: 4,
         }}
       >
-        {loading ? 'Opening…' : `Open drop (${DROP_TYPE})`}
+        {loading ? 'Opening…' : displayLabel}
       </button>
       {error && (
         <p style={{ color: '#c00', marginTop: 8, fontSize: 14 }}>{error}</p>
@@ -54,3 +67,17 @@ export function OpenDrop({ onOpened }: Props) {
     </div>
   )
 }
+
+/** Unit drop type id for a given rarity. */
+export function unitDropTypeId(rarity: string): string {
+  const slug = rarity.toLowerCase().replace(/\s+/, '_')
+  return `${slug}_unit_drop`
+}
+
+/** Item drop type id for a given rarity. */
+export function itemDropTypeId(rarity: string): string {
+  const slug = rarity.toLowerCase().replace(/\s+/, '_')
+  return `${slug}_item_drop`
+}
+
+export { RARITIES }
