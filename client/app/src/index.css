@@ -27,3 +27,11 @@ button {
 input {
   font: inherit;
 }
+
+/* Crisp, pixel-perfect scaling: no edge smoothing when scaling up or down */
+.card-image-crisp img {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}
