@@ -42,6 +42,11 @@ VISUAL STYLE:
 - Designed for dark UI background
 - Clear center focus
 
+FRAMING (MANDATORY):
+- The artwork must FILL the entire 32x32 canvas.
+- The subject must extend to or near the edges; use the full frame with minimal or no transparent margins.
+- No large empty borders; edge-to-edge or nearly edge-to-edge composition.
+
 IMPORTANT:
 - Do NOT add borders
 - Do NOT add glow

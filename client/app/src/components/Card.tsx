@@ -47,8 +47,9 @@ export function Card({ unit, size = 144 }: Props) {
             width: inner,
             height: inner,
             backgroundImage: `url(${artUrl})`,
-            backgroundSize: 'cover',
+            backgroundSize: '100% 100%',
             backgroundPosition: 'center',
+            imageRendering: 'pixelated',
           }}
         />
       </div>
